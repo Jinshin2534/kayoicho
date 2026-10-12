@@ -2,7 +2,7 @@ import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
 import { locationToPoint } from '../lib/geo';
 import { insertPoints } from './db';
-import { processPending } from './process';
+import { nameNewPlaces, processPending } from './process';
 
 export const TASK_NAME = 'kayoicho-location';
 
@@ -12,6 +12,7 @@ TaskManager.defineTask<{ locations: Location.LocationObject[] }>(TASK_NAME, asyn
   try {
     await insertPoints(data.locations.map(locationToPoint));
     await processPending();
+    await nameNewPlaces();
   } catch (e) {
     console.warn('位置タスクの処理に失敗', e);
   }

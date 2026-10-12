@@ -2,7 +2,7 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useR
 import { AppState } from 'react-native';
 import type { Place, Visit } from '../lib/types';
 import { getPlaces, getVisits, renamePlace } from '../services/db';
-import { processPending } from '../services/process';
+import { nameNewPlaces, processPending } from '../services/process';
 import { getTrackingState, startTracking, type TrackingState } from '../services/tracker';
 
 type DataValue = {
@@ -36,6 +36,10 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       await load();
       setLoading(false);
     }
+    // 名前検索は遅いので待たず、終わったら表示を更新する
+    nameNewPlaces()
+      .then(load)
+      .catch((e) => console.warn('名前の検索に失敗', e));
   }, [load]);
 
   // 権限ダイアログ中は AppState が inactive→active と揺れるので、その間は同期を止める

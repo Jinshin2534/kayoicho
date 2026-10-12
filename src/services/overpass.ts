@@ -1,17 +1,21 @@
 import { buildOverpassQuery, pickName } from '../lib/naming';
 import type { LatLng } from '../lib/types';
 
-const ENDPOINT = 'https://overpass-api.de/api/interpreter';
-const TIMEOUT_MS = 15_000;
+// 本家 overpass-api.de は混雑で 504 を返し続けることがあるため、ミラーへ順にフォールバックする
+const ENDPOINTS = [
+  'https://overpass-api.de/api/interpreter',
+  'https://overpass.private.coffee/api/interpreter',
+  'https://overpass.kumi.systems/api/interpreter',
+];
+const TIMEOUT_MS = 10_000;
 
 export type NameLookup = { ok: true; name: string | null } | { ok: false };
 
-/** 失敗(通信・タイムアウト・HTTPエラー)は ok:false。名前が無かっただけなら ok:true, name:null */
-export async function lookupName(at: LatLng): Promise<NameLookup> {
+async function tryEndpoint(endpoint: string, at: LatLng): Promise<NameLookup> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
-    const res = await fetch(ENDPOINT, {
+    const res = await fetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'User-Agent': 'kayoicho/0.1' },
       body: `data=${encodeURIComponent(buildOverpassQuery(at))}`,
@@ -24,4 +28,13 @@ export async function lookupName(at: LatLng): Promise<NameLookup> {
   } finally {
     clearTimeout(timer);
   }
+}
+
+/** 全エンドポイントが失敗(通信・タイムアウト・HTTPエラー・JSON不正)なら ok:false。名前が無かっただけなら ok:true, name:null */
+export async function lookupName(at: LatLng): Promise<NameLookup> {
+  for (const endpoint of ENDPOINTS) {
+    const result = await tryEndpoint(endpoint, at);
+    if (result.ok) return result;
+  }
+  return { ok: false };
 }
