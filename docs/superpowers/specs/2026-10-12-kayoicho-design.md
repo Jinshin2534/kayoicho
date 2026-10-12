@@ -11,44 +11,46 @@ GPSで自分が行った建物を自動で記録し、訪問の履歴と「何�
 
 ## 技術
 
-- Expo SDK 56（JavaScript）。既存の におい標・釣りスポナビ と同じ作り。
+- Expo SDK 56（TypeScript・expo-router・pnpm）。既存の におい標 と同じ作り。
 - expo-location（バックグラウンド位置更新）＋ expo-task-manager
 - expo-sqlite
 - 地図は Leaflet ＋ OpenStreetMap タイルを react-native-webview で表示
 - テストは jest（`src/lib` の純粋関数）
-- 画面確認は Expo Go ＋ iOS シミュレータ（位置をシミュレートして動かす）
+- 画面確認は開発用ビルド（`expo run:ios`）＋ iOS シミュレータ。Expo Go の iOS 版はバックグラウンド位置取得ができないため
 
 ## 滞在判定の定義
 
 - **滞在** = 半径 50m 以内に 5 分以上とどまったこと。
 - 精度（accuracy）が 100m より悪い点は捨てる（GPSの飛び対策）。
 - 滞在の中心座標 = 含まれる点の平均。
+- 到着 = 塊の最初の点の時刻、出発 = 塊の外に出た最初の点の時刻。止まっている間は位置更新が届かない（距離で間引くため）ので、「次の点が来るまではそこにいた」とみなす。
+- 最後の塊（まだ外に出た点が無い）は確定させず、次回に持ち越す。
 - **同じ建物** = 既存の建物の中心から 40m 以内。該当が複数あれば最も近いもの。
 - 同じ建物への滞在が 10 分以内の途切れで続いた場合は 1 回の訪問にまとめる（建物内でGPSが一瞬外れた対策）。
 - 回数 = その建物への訪問（まとめた後）の件数。
 
-これらの数値は `src/lib/config.js` に定数としてまとめる。
+これらの数値は `src/lib/config.ts` に定数としてまとめる。
 
 ## 構成
 
 ```
 src/lib/          純粋関数（テストあり、React/Expo に依存しない）
-  config.js       判定の数値
-  geo.js          2点間の距離（ハバーサイン）
-  stay.js         座標の列 → 滞在の列（到着・出発・中心）
-  match.js        滞在 → 既存の建物か新しい建物か、近い訪問をまとめる
-  stats.js        建物ごとの回数・合計滞在時間・初回/最終訪問、ランキングの並べ替え
-  naming.js       Overpass の応答（JSON）→ 最も近い名前付き候補を選ぶ
+  config.ts       判定の数値
+  geo.ts          2点間の距離（ハバーサイン）
+  stay.ts         座標の列 → 滞在の列（到着・出発・中心）
+  match.ts        滞在 → 既存の建物か新しい建物か、近い訪問をまとめる
+  stats.ts        建物ごとの回数・合計滞在時間・初回/最終訪問、ランキングの並べ替え
+  naming.ts       Overpass の応答（JSON）→ 最も近い名前付き候補を選ぶ
 src/services/
-  db.js           expo-sqlite。points / visits / places の3テーブル
-  tracker.js      バックグラウンド位置タスク。受け取った座標を points に追記するだけ
-  process.js      未処理の points を stay → match → DB 反映。アプリ起動時と位置タスクの中で呼ぶ
-  overpass.js     Overpass API への問い合わせ（タイムアウト・失敗時は null）
+  db.ts           expo-sqlite。points / visits / places の3テーブル
+  tracker.ts      バックグラウンド位置タスク。受け取った座標を points に追記するだけ
+  process.ts      未処理の points を stay → match → DB 反映。アプリ起動時と位置タスクの中で呼ぶ
+  overpass.ts     Overpass API への問い合わせ（タイムアウト・失敗時は null）
 app/ (expo-router)
-  (tabs)/index.js     履歴
-  (tabs)/ranking.js   ランキング
-  (tabs)/map.js       地図
-  place/[id].js       建物の訪問日時一覧＋名前変更
+  (tabs)/index.tsx     履歴
+  (tabs)/ranking.tsx   ランキング
+  (tabs)/map.tsx       地図
+  place/[id].tsx       建物の訪問日時一覧＋名前変更
 ```
 
 ## データ
