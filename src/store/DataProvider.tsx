@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { AppState } from 'react-native';
 import type { Place, Visit } from '../lib/types';
 import { getPlaces, getVisits, renamePlace } from '../services/db';
@@ -38,8 +38,27 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     }
   }, [load]);
 
+  // 権限ダイアログ中は AppState が inactive→active と揺れるので、その間は同期を止める
+  const startingRef = useRef(false);
+
   const enableTracking = useCallback(async () => {
-    setTracking(await startTracking());
+    startingRef.current = true;
+    try {
+      setTracking(await startTracking());
+    } finally {
+      startingRef.current = false;
+    }
+  }, []);
+
+  // 権限がすでにあるなら黙って記録を始める。まだ聞いていないなら帯で理由を説明してから聞く
+  const syncTracking = useCallback(async () => {
+    startingRef.current = true;
+    try {
+      const s = await getTrackingState();
+      setTracking(s === 'unavailable' ? await startTracking() : s);
+    } finally {
+      startingRef.current = false;
+    }
   }, []);
 
   const rename = useCallback(
@@ -52,18 +71,23 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     (async () => {
-      const state = await getTrackingState();
-      // 権限がすでにあるなら黙って記録を始める。まだ聞いていないなら帯で理由を説明してから聞く
-      setTracking(state === 'unavailable' ? await startTracking() : state);
-      await refresh();
-    })();
+      try {
+        await syncTracking();
+      } catch (e) {
+        console.warn('記録状態の確認に失敗', e);
+      } finally {
+        await refresh();
+      }
+    })().catch((e) => console.warn('初期読み込みに失敗', e));
     const sub = AppState.addEventListener('change', (next) => {
       if (next !== 'active') return;
-      getTrackingState().then(setTracking);
-      refresh();
+      if (!startingRef.current) {
+        syncTracking().catch((e) => console.warn('記録状態の確認に失敗', e));
+      }
+      refresh().catch((e) => console.warn('更新に失敗', e));
     });
     return () => sub.remove();
-  }, [refresh]);
+  }, [refresh, syncTracking]);
 
   const value = useMemo(
     () => ({ places, visits, tracking, loading, refresh, enableTracking, rename }),

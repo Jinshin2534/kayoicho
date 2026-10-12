@@ -1,4 +1,3 @@
-import '../src/services/tracker'; // 位置タスクの定義をアプリ起動時に必ず読み込む
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';

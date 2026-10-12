@@ -9,8 +9,12 @@ export const TASK_NAME = 'kayoicho-location';
 // アプリが裏で起こされたときにも登録されているよう、モジュール読み込み時に定義する
 TaskManager.defineTask<{ locations: Location.LocationObject[] }>(TASK_NAME, async ({ data, error }) => {
   if (error || !data) return;
-  await insertPoints(data.locations.map(locationToPoint));
-  await processPending();
+  try {
+    await insertPoints(data.locations.map(locationToPoint));
+    await processPending();
+  } catch (e) {
+    console.warn('位置タスクの処理に失敗', e);
+  }
 });
 
 /**
