@@ -7,7 +7,8 @@ const ENDPOINTS = [
   'https://overpass.private.coffee/api/interpreter',
   'https://overpass.kumi.systems/api/interpreter',
 ];
-const TIMEOUT_MS = 10_000;
+// 公開サーバは混雑時に応答まで10秒以上かかることがある(実測6〜12秒)
+const TIMEOUT_MS = 20_000;
 
 export type NameLookup = { ok: true; name: string | null } | { ok: false };
 
