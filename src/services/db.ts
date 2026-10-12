@@ -41,12 +41,34 @@ async function open(): Promise<SQLite.SQLiteDatabase> {
   return db;
 }
 
-export async function transaction(fn: () => Promise<void>): Promise<void> {
-  const db = await getDb();
-  await db.withTransactionAsync(fn);
+/**
+ * 書き込みを1本ずつ直列に実行する JS レベルの mutex。
+ * expo-sqlite の withTransactionAsync は排他的ではなく、1本の共有接続に対して
+ * 別のクエリが途中で割り込むとトランザクション内で実行され、2つ目の BEGIN は失敗して
+ * その ROLLBACK が1つ目を巻き込む。バックグラウンドタスクとフォアグラウンドは
+ * 同じ JS ランタイム・同じ接続を使うので、書き込みはここを通して直列化する。
+ * 前の保持者が失敗しても鎖は途切れない。
+ */
+let writeQueue: Promise<unknown> = Promise.resolve();
+function exclusive<T>(fn: () => Promise<T>): Promise<T> {
+  const result = writeQueue.then(fn, fn);
+  writeQueue = result.catch(() => undefined);
+  return result;
 }
 
-type PointRow = { lat: number; lng: number; accuracy: number | null; t: number };
+/**
+ * 排他的なトランザクション。fn の中から exclusive で包まれた関数
+ * (insertPoints / setOsmName / renamePlace / prunePoints / transaction)
+ * を呼んではいけない(デッドロックする)。
+ */
+export function transaction(fn: () => Promise<void>): Promise<void> {
+  return exclusive(async () => {
+    const db = await getDb();
+    await db.withTransactionAsync(fn);
+  });
+}
+
+type PointRow = { id: number; lat: number; lng: number; accuracy: number | null; t: number };
 type PlaceRow = {
   id: number;
   name: string | null;
@@ -74,29 +96,42 @@ const toVisit = (r: VisitRow): Visit => ({
   departedAt: r.departed_at,
 });
 
-export async function insertPoints(points: readonly Point[]): Promise<void> {
-  if (points.length === 0) return;
-  const db = await getDb();
-  await db.withTransactionAsync(async () => {
-    for (const p of points) {
-      await db.runAsync('INSERT INTO points (lat, lng, accuracy, t) VALUES (?, ?, ?, ?)', p.lat, p.lng, p.accuracy, p.t);
-    }
+export function insertPoints(points: readonly Point[]): Promise<void> {
+  if (points.length === 0) return Promise.resolve();
+  return exclusive(async () => {
+    const db = await getDb();
+    await db.withTransactionAsync(async () => {
+      for (const p of points) {
+        await db.runAsync('INSERT INTO points (lat, lng, accuracy, t) VALUES (?, ?, ?, ?)', p.lat, p.lng, p.accuracy, p.t);
+      }
+    });
   });
 }
 
-export async function getUnprocessedPoints(): Promise<Point[]> {
+/** 未処理の座標と、読んだ中で最大の id(markProcessedBefore で後から入った座標を巻き込まないため) */
+export async function getUnprocessedPoints(): Promise<{ points: Point[]; maxId: number | null }> {
   const db = await getDb();
-  return db.getAllAsync<PointRow>('SELECT lat, lng, accuracy, t FROM points WHERE processed = 0 ORDER BY t');
+  const rows = await db.getAllAsync<PointRow>(
+    'SELECT id, lat, lng, accuracy, t FROM points WHERE processed = 0 ORDER BY t',
+  );
+  let maxId: number | null = null;
+  const points: Point[] = rows.map((r) => {
+    if (maxId === null || r.id > maxId) maxId = r.id;
+    return { lat: r.lat, lng: r.lng, accuracy: r.accuracy, t: r.t };
+  });
+  return { points, maxId };
 }
 
-export async function markProcessedBefore(t: number): Promise<void> {
+export async function markProcessedBefore(t: number, maxId: number): Promise<void> {
   const db = await getDb();
-  await db.runAsync('UPDATE points SET processed = 1 WHERE processed = 0 AND t < ?', t);
+  await db.runAsync('UPDATE points SET processed = 1 WHERE processed = 0 AND t < ? AND id <= ?', t, maxId);
 }
 
-export async function prunePoints(before: number): Promise<void> {
-  const db = await getDb();
-  await db.runAsync('DELETE FROM points WHERE processed = 1 AND t < ?', before);
+export function prunePoints(before: number): Promise<void> {
+  return exclusive(async () => {
+    const db = await getDb();
+    await db.runAsync('DELETE FROM points WHERE processed = 1 AND t < ?', before);
+  });
 }
 
 export async function getPlaces(): Promise<Place[]> {
@@ -141,17 +176,21 @@ export async function getPendingNaming(limit: number): Promise<Place[]> {
 }
 
 /** 自動でつけた名前を保存する。ユーザーがつけた名前は上書きしない */
-export async function setOsmName(placeId: number, name: string | null): Promise<void> {
-  const db = await getDb();
-  await db.runAsync(
-    "UPDATE places SET name = ?, name_source = ?, naming_pending = 0 WHERE id = ? AND name_source != 'user'",
-    name,
-    name === null ? 'none' : 'osm',
-    placeId,
-  );
+export function setOsmName(placeId: number, name: string | null): Promise<void> {
+  return exclusive(async () => {
+    const db = await getDb();
+    await db.runAsync(
+      "UPDATE places SET name = ?, name_source = ?, naming_pending = 0 WHERE id = ? AND name_source != 'user'",
+      name,
+      name === null ? 'none' : 'osm',
+      placeId,
+    );
+  });
 }
 
-export async function renamePlace(placeId: number, name: string): Promise<void> {
-  const db = await getDb();
-  await db.runAsync("UPDATE places SET name = ?, name_source = 'user', naming_pending = 0 WHERE id = ?", name, placeId);
+export function renamePlace(placeId: number, name: string): Promise<void> {
+  return exclusive(async () => {
+    const db = await getDb();
+    await db.runAsync("UPDATE places SET name = ?, name_source = 'user', naming_pending = 0 WHERE id = ?", name, placeId);
+  });
 }

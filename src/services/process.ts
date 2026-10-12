@@ -36,7 +36,7 @@ async function apply(action: StayAction, now: number): Promise<void> {
 }
 
 async function run(now: number): Promise<void> {
-  const points = await db.getUnprocessedPoints();
+  const { points, maxId } = await db.getUnprocessedPoints();
   const { stays, consumedUntil } = detectStays(points);
 
   // 訪問の記録と「処理済み」の印は一緒に確定させる(途中で落ちて二重に数えないため)
@@ -45,7 +45,7 @@ async function run(now: number): Promise<void> {
       const [places, lastVisit] = await Promise.all([db.getPlaces(), db.getLastVisit()]);
       await apply(planStay(places, lastVisit, stay), now);
     }
-    if (consumedUntil !== null) await db.markProcessedBefore(consumedUntil);
+    if (consumedUntil !== null && maxId !== null) await db.markProcessedBefore(consumedUntil, maxId);
   });
 
   await db.prunePoints(now - POINT_RETENTION_MS);
