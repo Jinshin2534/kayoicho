@@ -8,10 +8,13 @@ export function getDb(): Promise<SQLite.SQLiteDatabase> {
   return dbPromise;
 }
 
-async function open(): Promise<SQLite.SQLiteDatabase> {
-  const db = await SQLite.openDatabaseAsync('kayoicho.db');
-  await db.execAsync(`
-    PRAGMA journal_mode = WAL;
+/**
+ * スキーマの移行。index 0 が現行(v1)のスキーマで、PRAGMA user_version = 配列の何番目まで適用済みか。
+ * v1 は user_version 0 のまま作成済みの既存インストールにも流せるよう IF NOT EXISTS で冪等にしてある。
+ * スキーマを変えるときは末尾に追加する(既存の要素は書き換えない)。
+ */
+const MIGRATIONS: readonly string[] = [
+  `
     CREATE TABLE IF NOT EXISTS points (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       lat REAL NOT NULL,
@@ -37,7 +40,20 @@ async function open(): Promise<SQLite.SQLiteDatabase> {
       departed_at INTEGER NOT NULL
     );
     CREATE INDEX IF NOT EXISTS visits_departed ON visits (departed_at);
-  `);
+  `,
+];
+
+async function open(): Promise<SQLite.SQLiteDatabase> {
+  const db = await SQLite.openDatabaseAsync('kayoicho.db');
+  await db.execAsync('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;');
+  const row = await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
+  const current = row?.user_version ?? 0;
+  for (let v = current; v < MIGRATIONS.length; v++) {
+    await db.withTransactionAsync(async () => {
+      await db.execAsync(MIGRATIONS[v]);
+      await db.execAsync(`PRAGMA user_version = ${v + 1}`);
+    });
+  }
   return db;
 }
 
@@ -122,6 +138,7 @@ export async function getUnprocessedPoints(): Promise<{ points: Point[]; maxId: 
   return { points, maxId };
 }
 
+/** transaction() の中でだけ呼ぶ(書き込みロックを取らない) */
 export async function markProcessedBefore(t: number, maxId: number): Promise<void> {
   const db = await getDb();
   await db.runAsync('UPDATE points SET processed = 1 WHERE processed = 0 AND t < ? AND id <= ?', t, maxId);
@@ -150,17 +167,20 @@ export async function getLastVisit(): Promise<Visit | null> {
   return row ? toVisit(row) : null;
 }
 
+/** transaction() の中でだけ呼ぶ(書き込みロックを取らない) */
 export async function insertPlace(lat: number, lng: number, createdAt: number): Promise<number> {
   const db = await getDb();
   const result = await db.runAsync('INSERT INTO places (lat, lng, created_at) VALUES (?, ?, ?)', lat, lng, createdAt);
   return result.lastInsertRowId;
 }
 
+/** transaction() の中でだけ呼ぶ(書き込みロックを取らない) */
 export async function insertVisit(placeId: number, arrivedAt: number, departedAt: number): Promise<void> {
   const db = await getDb();
   await db.runAsync('INSERT INTO visits (place_id, arrived_at, departed_at) VALUES (?, ?, ?)', placeId, arrivedAt, departedAt);
 }
 
+/** transaction() の中でだけ呼ぶ(書き込みロックを取らない) */
 export async function extendVisit(visitId: number, departedAt: number): Promise<void> {
   const db = await getDb();
   await db.runAsync('UPDATE visits SET departed_at = ? WHERE id = ?', departedAt, visitId);
