@@ -1,0 +1,32 @@
+{
+  "expo": {
+    "name": "かよい帳",
+    "slug": "kayoicho",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "scheme": "kayoicho",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.nokokoro.kayoicho"
+    },
+    "android": {
+      "package": "com.nokokoro.kayoicho"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-sqlite",
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "アプリを閉じていても、行った建物と回数を記録するために位置情報を使います。位置情報はこの端末の中だけに保存されます（建物の名前を調べるときだけ、その場所をOpenStreetMapに問い合わせます）。",
+          "locationWhenInUsePermission": "行った建物と回数を記録するために位置情報を使います。位置情報はこの端末の中だけに保存されます（建物の名前を調べるときだけ、その場所をOpenStreetMapに問い合わせます）。",
+          "isIosBackgroundLocationEnabled": true,
+          "isAndroidBackgroundLocationEnabled": true,
+          "isAndroidForegroundServiceEnabled": true
+        }
+      ]
+    ]
+  }
+}
