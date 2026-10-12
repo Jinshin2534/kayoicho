@@ -1,4 +1,4 @@
-import { MAX_ACCURACY_M, STAY_MIN_MS, STAY_RADIUS_M } from './config';
+import { MAX_ACCURACY_M, MAX_STAY_GAP_MS, STAY_MIN_MS, STAY_RADIUS_M } from './config';
 import { centroid, distanceMeters } from './geo';
 import type { Point, Stay } from './types';
 
@@ -11,7 +11,7 @@ export type DetectResult = {
 /**
  * 座標の列から滞在を切り出す。
  * 出発時刻は「塊の外に出た最初の点」の時刻。止まっている間は位置更新が
- * 届かないので、次の点が来るまではそこにいたとみなす。
+ * 届かないので、次の点が来るまではそこにいたとみなす(ただし MAX_STAY_GAP_MS まで)。
  */
 export function detectStays(points: readonly Point[]): DetectResult {
   const good = points
@@ -34,7 +34,7 @@ export function detectStays(points: readonly Point[]): DetectResult {
       return { stays, consumedUntil: good[i].t };
     }
     const arrivedAt = cluster[0].t;
-    const departedAt = good[j].t;
+    const departedAt = Math.min(good[j].t, cluster[cluster.length - 1].t + MAX_STAY_GAP_MS);
     if (departedAt - arrivedAt >= STAY_MIN_MS) {
       stays.push({ lat: center.lat, lng: center.lng, arrivedAt, departedAt });
     }

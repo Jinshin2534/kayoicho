@@ -1,4 +1,5 @@
 import { offsetMeters } from './geo';
+import { MAX_STAY_GAP_MS } from './config';
 import { detectStays } from './stay';
 import type { Point } from './types';
 
@@ -67,5 +68,13 @@ describe('detectStays', () => {
   it('2か所に順に滞在 → 2件', () => {
     const points = [at(0, 0, 0), at(0, 0, 10), at(1000, 0, 12), at(1000, 5, 30), at(3000, 0, 32)];
     expect(detectStays(points).stays).toHaveLength(2);
+  });
+
+  it('次の点が何日も来ないときは12時間で打ち切る', () => {
+    const points = [at(0, 0, 0), at(5000, 0, 3 * 24 * 60)];
+    const { stays } = detectStays(points);
+    expect(stays).toHaveLength(1);
+    expect(stays[0].departedAt - stays[0].arrivedAt).toBe(12 * 60 * MIN);
+    expect(MAX_STAY_GAP_MS).toBe(12 * 60 * MIN);
   });
 });

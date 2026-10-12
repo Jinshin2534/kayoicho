@@ -8,6 +8,13 @@ export function buildOverpassQuery(at: LatLng, radius: number = NAME_SEARCH_RADI
 
 const PLACE_KEYS = ['building', 'shop', 'amenity', 'tourism', 'office', 'leisure', 'healthcare', 'craft', 'public_transport'];
 
+/** Overpass は混雑・メモリ不足のとき HTTP 200 のまま remark に runtime error を入れて空の elements を返す。名前が無いのではなく失敗として扱う */
+export function isOverpassError(json: unknown): boolean {
+  if (typeof json !== 'object' || json === null) return false;
+  const remark = (json as { remark?: unknown }).remark;
+  return typeof remark === 'string' && /runtime error/i.test(remark);
+}
+
 function isPlaceLike(tags: Record<string, unknown>): boolean {
   if (tags.railway === 'station') return true;
   return PLACE_KEYS.some((key) => key in tags);
@@ -33,9 +40,11 @@ export function pickName(json: unknown, at: LatLng): string | null {
   for (const raw of elements) {
     if (typeof raw !== 'object' || raw === null) continue;
     const el = raw as Record<string, unknown>;
-    const tags = el.tags as Record<string, unknown> | undefined;
-    if (!tags || !isPlaceLike(tags)) continue;
-    const name = typeof tags['name:ja'] === 'string' ? tags['name:ja'] : tags.name;
+    const tags = el.tags;
+    if (typeof tags !== 'object' || tags === null || !isPlaceLike(tags as Record<string, unknown>)) continue;
+    const t = tags as Record<string, unknown>;
+    const ja = t['name:ja'];
+    const name = typeof ja === 'string' && ja.trim() !== '' ? ja : t.name;
     if (typeof name !== 'string' || name.trim() === '') continue;
     const pos = positionOf(el);
     if (!pos) continue;

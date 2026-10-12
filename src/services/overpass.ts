@@ -1,4 +1,4 @@
-import { buildOverpassQuery, pickName } from '../lib/naming';
+import { buildOverpassQuery, isOverpassError, pickName } from '../lib/naming';
 import type { LatLng } from '../lib/types';
 
 // 本家 overpass-api.de は混雑で 504 を返し続けることがあるため、ミラーへ順にフォールバックする
@@ -23,7 +23,10 @@ async function tryEndpoint(endpoint: string, at: LatLng): Promise<NameLookup> {
       signal: controller.signal,
     });
     if (!res.ok) return { ok: false };
-    return { ok: true, name: pickName(await res.json(), at) };
+    const json: unknown = await res.json();
+    // HTTP 200 でも runtime error の応答は失敗(次のミラーへ。名前なしとは区別する)
+    if (isOverpassError(json)) return { ok: false };
+    return { ok: true, name: pickName(json, at) };
   } catch {
     return { ok: false };
   } finally {

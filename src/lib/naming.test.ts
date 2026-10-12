@@ -1,5 +1,5 @@
 import { offsetMeters } from './geo';
-import { buildOverpassQuery, pickName } from './naming';
+import { buildOverpassQuery, isOverpassError, pickName } from './naming';
 
 const AT = { lat: 35.681236, lng: 139.767125 };
 
@@ -58,5 +58,33 @@ describe('pickName', () => {
     expect(pickName(null, AT)).toBeNull();
     expect(pickName('oops', AT)).toBeNull();
     expect(pickName({ elements: [{ type: 'node' }, { tags: { name: 'x', shop: 'y' } }] }, AT)).toBeNull();
+  });
+});
+
+describe('pickName の堅さ', () => {
+  it('tags が object でない要素は読み飛ばす', () => {
+    const p = offsetMeters(AT, 5, 0);
+    const json = { elements: [{ type: 'node', lat: p.lat, lon: p.lng, tags: 'oops' }, node(2, 20, { name: 'ローソン', shop: 'convenience' })] };
+    expect(pickName(json, AT)).toBe('ローソン');
+  });
+
+  it('name:ja が空白なら name にフォールバックする', () => {
+    expect(pickName({ elements: [node(1, 5, { name: 'Tokyo Tower', 'name:ja': '  ', tourism: 'attraction' })] }, AT)).toBe(
+      'Tokyo Tower',
+    );
+  });
+});
+
+describe('isOverpassError', () => {
+  it('remark に runtime error があれば true', () => {
+    expect(isOverpassError({ elements: [], remark: 'runtime error: Query timed out in "query" at line 1' })).toBe(true);
+    expect(isOverpassError({ remark: 'Runtime Error: out of memory' })).toBe(true);
+  });
+  it('通常の応答や壊れた値は false', () => {
+    expect(isOverpassError({ elements: [] })).toBe(false);
+    expect(isOverpassError({ remark: 'something else' })).toBe(false);
+    expect(isOverpassError({ remark: 5 })).toBe(false);
+    expect(isOverpassError(null)).toBe(false);
+    expect(isOverpassError('runtime error')).toBe(false);
   });
 });

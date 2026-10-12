@@ -16,6 +16,14 @@ describe('buildMapHtml', () => {
   it('Leaflet を版指定で読み込む', () => {
     expect(html).toContain('https://unpkg.com/leaflet@1.9.4/dist/leaflet.js');
   });
+  it('CSS と JS に SRI(integrity)を付ける', () => {
+    const css = html.match(/<link[^>]*leaflet\.css[^>]*>/)?.[0] ?? '';
+    const js = html.match(/<script[^>]*leaflet\.js[^>]*>/)?.[0] ?? '';
+    expect(css).toMatch(/integrity="sha256-[A-Za-z0-9+/]+=*"/);
+    expect(js).toMatch(/integrity="sha256-[A-Za-z0-9+/]+=*"/);
+    expect(css).toContain('crossorigin=""');
+    expect(js).toContain('crossorigin=""');
+  });
   it('橋渡しの関数と合図を持つ', () => {
     expect(html).toContain('window.kayoi');
     expect(html).toContain("type: 'ready'");
