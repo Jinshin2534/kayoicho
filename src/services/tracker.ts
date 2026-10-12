@@ -12,7 +12,8 @@ TaskManager.defineTask<{ locations: Location.LocationObject[] }>(TASK_NAME, asyn
   try {
     await insertPoints(data.locations.map(locationToPoint));
     await processPending();
-    await nameNewPlaces();
+    // 名前探しは通信が遅いので待たない(裏で起こされた時間を短く保つ)
+    nameNewPlaces().catch(console.warn);
   } catch (e) {
     console.warn('位置タスクの処理に失敗', e);
   }

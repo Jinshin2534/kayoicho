@@ -73,7 +73,12 @@ export default function PlaceScreen() {
               <View style={styles.statsRow}>
                 <Stat label="回数" value={`${stats.count}回`} />
                 <Stat label="合計" value={formatDuration(stats.totalMs)} />
+              </View>
+            )}
+            {stats && (
+              <View style={styles.statsRow}>
                 <Stat label="初めて" value={formatDate(stats.firstAt)} />
+                <Stat label="最後" value={formatDate(stats.lastAt)} />
               </View>
             )}
             <Text style={styles.section}>行った日時</Text>
